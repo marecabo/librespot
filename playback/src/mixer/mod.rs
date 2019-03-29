@@ -25,6 +25,7 @@ pub struct MixerConfig {
     pub card: String,
     pub mixer: String,
     pub index: u32,
+    pub pipe: Option<String>,
 }
 
 impl Default for MixerConfig {
@@ -32,12 +33,16 @@ impl Default for MixerConfig {
         card: String::from("default"),
         mixer: String::from("PCM"),
         index: 0,
+        pipe: None
         }
     }
 }
 
 pub mod softmixer;
 use self::softmixer::SoftMixer;
+
+pub mod pipemixer;
+use self::pipemixer::PipeMixer;
 
 fn mk_sink<M: Mixer + 'static>(device: Option<MixerConfig>) -> Box<Mixer> {
     Box::new(M::open(device))
@@ -48,6 +53,7 @@ pub fn find<T: AsRef<str>>(name: Option<T>) -> Option<fn(Option<MixerConfig>) ->
         None | Some("softvol") => Some(mk_sink::<SoftMixer>),
         #[cfg(feature = "alsa-backend")]
         Some("alsa") => Some(mk_sink::<AlsaMixer>),
+        Some("pipe") => Some(mk_sink::<PipeMixer>),
         _ => None,
     }
 }

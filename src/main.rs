@@ -88,6 +88,7 @@ fn list_backends() {
 struct Setup {
     backend: fn(Option<String>) -> Box<Sink>,
     device: Option<String>,
+    metadata_pipe: Option<String>,
 
     mixer: fn(Option<MixerConfig>) -> Box<Mixer>,
 
@@ -142,6 +143,7 @@ fn setup(args: &[String]) -> Setup {
             "Audio device to use. Use '?' to list options if using portaudio or alsa",
             "DEVICE",
         )
+        .optopt("", "metadata-pipe", "Pipe to write metadata", "METADATA_PIPE")
         .optopt("", "mixer", "Mixer to use (alsa or softmixer)", "MIXER")
         .optopt(
             "m",
@@ -223,6 +225,8 @@ fn setup(args: &[String]) -> Setup {
         exit(0);
     }
 
+    let metadata_pipe = matches.opt_str("metadata-pipe");
+
     let mixer_name = matches.opt_str("mixer");
     let mixer = mixer::find(mixer_name.as_ref()).expect("Invalid mixer");
 
@@ -233,6 +237,7 @@ fn setup(args: &[String]) -> Setup {
             .opt_str("mixer-index")
             .map(|index| index.parse::<u32>().unwrap())
             .unwrap_or(0),
+        pipe: matches.opt_str("metadata-pipe"),
     };
 
     let use_audio_cache = !matches.opt_present("disable-audio-cache");
@@ -347,6 +352,7 @@ fn setup(args: &[String]) -> Setup {
         connect_config: connect_config,
         credentials: credentials,
         device: device,
+        metadata_pipe: metadata_pipe,
         enable_discovery: enable_discovery,
         zeroconf_port: zeroconf_port,
         mixer: mixer,
@@ -362,6 +368,7 @@ struct Main {
     connect_config: ConnectConfig,
     backend: fn(Option<String>) -> Box<Sink>,
     device: Option<String>,
+    metadata_pipe: Option<String>,
     mixer: fn(Option<MixerConfig>) -> Box<Mixer>,
     mixer_config: MixerConfig,
     handle: Handle,
@@ -389,6 +396,7 @@ impl Main {
             connect_config: setup.connect_config,
             backend: setup.backend,
             device: setup.device,
+            metadata_pipe: setup.metadata_pipe,
             mixer: setup.mixer,
             mixer_config: setup.mixer_config,
 
@@ -455,12 +463,15 @@ impl Future for Main {
                 let mixer = (self.mixer)(Some(mixer_config));
                 let player_config = self.player_config.clone();
                 let connect_config = self.connect_config.clone();
+                let metadata_pipe = self.metadata_pipe.clone();
+
+                mixer.set_volume(self.connect_config.volume);
 
                 let audio_filter = mixer.get_audio_filter();
                 let backend = self.backend;
                 let device = self.device.clone();
                 let (player, event_channel) =
-                    Player::new(player_config, session.clone(), audio_filter, move || {
+                    Player::new(player_config, session.clone(), audio_filter, metadata_pipe, move || {
                         (backend)(device)
                     });
 
